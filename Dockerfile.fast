@@ -1,0 +1,13 @@
+# Fast Dockerfile: uses pre-built static binary directly (no Go toolchain compile needed)
+FROM alpine:latest
+RUN apk --no-cache add ca-certificates tzdata
+
+WORKDIR /app
+COPY bin/antigravity2api-linux-amd64 /app/antigravity2api
+RUN chmod +x /app/antigravity2api
+
+EXPOSE 8088
+ENV PORT=8088
+ENV HOST=0.0.0.0
+
+ENTRYPOINT ["/app/antigravity2api"]

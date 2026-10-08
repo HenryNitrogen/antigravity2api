@@ -1,0 +1,29 @@
+# Binaries and build outputs
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.app
+
+# Local user configs & secrets
+config.json
+.env
+.env.*
+*.local
+
+# macOS files
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Editor / IDE directories
+.idea/
+.vscode/
+*.swp
+*~
+
+# Log files
+*.log

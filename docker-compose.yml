@@ -1,0 +1,18 @@
+services:
+  antigravity2api:
+    build: .
+    container_name: antigravity2api
+    restart: always
+    ports:
+      - "8088:8088"
+    environment:
+      - PORT=8088
+      - HOST=0.0.0.0
+      # 👇 从 Mac 桌面端点击「复制 Refresh Token」，直接粘贴在此处：
+      - REFRESH_TOKEN=在这里粘贴你的_REFRESH_TOKEN
+      - PROJECT_ID=aicode-consumers
+      - DEFAULT_MODEL=gemini-3.8-flash
+      # 可选：如果希望保护接口，设置 API Key (客户端请求需带 Bearer <KEY>)
+      # - API_KEY=sk-your-private-key
+      # 可选：如果服务器位于中国大陆，需配置出海代理连接 Google:
+      # - PROXY_URL=http://host.docker.internal:7890
