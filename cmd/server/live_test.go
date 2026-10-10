@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -186,3 +185,89 @@ func TestLiveTokenAndUpstream(t *testing.T) {
 
 	fmt.Printf("[Test] ✅ 多轮 Tool 交互完美成功！模型最终回复: %s\n", strings.TrimSpace(parsedRound2.Choices[0].Message.Content))
 }
+
+func TestLiveComplexSchemaTools(t *testing.T) {
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		t.Fatalf("加载配置失败: %v", err)
+	}
+
+	tokenManager := auth.NewTokenManager(cfg)
+	client := upstream.NewUpstreamClient(cfg, tokenManager)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	// 模拟 Cline / Cursor 传入的多工具和复杂 union 类型定义
+	var tools []adapter.Tool
+	for i := 0; i < 18; i++ {
+		tools = append(tools, adapter.Tool{
+			Type: "function",
+			Function: adapter.FunctionPayload{
+				Name:        fmt.Sprintf("tool_%d", i),
+				Description: fmt.Sprintf("Description for tool %d", i),
+				Parameters: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"arg0": map[string]any{
+							"type": []any{"string", "null"},
+							"description": "Optional string",
+						},
+						"arg1": map[string]any{
+							"type": []any{"integer", "null"},
+							"description": "Optional integer",
+						},
+						"arg2": map[string]any{
+							"type": []any{"boolean", "null"},
+							"description": "Optional boolean",
+						},
+						"nested": map[string]any{
+							"type": "object",
+							"properties": map[string]any{
+								"sub_field": map[string]any{
+									"type": []any{"string", "null"},
+								},
+							},
+						},
+					},
+					"required": []string{"arg0"},
+				},
+			},
+		})
+	}
+
+	chatReq := &adapter.ChatCompletionRequest{
+		Model: "gemini-3.8-flash",
+		Messages: []adapter.ChatMessage{
+			{Role: "user", Content: "Call tool_1 with arg0='test'"},
+		},
+		Tools: tools,
+	}
+
+	inner, err := adapter.ConvertRequest(chatReq)
+	if err != nil {
+		t.Fatalf("ConvertRequest 失败: %v", err)
+	}
+
+	resp, err := client.CallGenerateContent(ctx, inner, "gemini-3.8-flash", false)
+	if err != nil {
+		t.Fatalf("上游调用失败 (未解决 400 错误): %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("上游响应非 200 (%d): %s", resp.StatusCode, string(body))
+	}
+
+	parsed, err := adapter.HandleNonStream(resp, "gemini-3.8-flash", cfg)
+	if err != nil {
+		t.Fatalf("解析响应失败: %v", err)
+	}
+
+	if len(parsed.Choices) == 0 {
+		t.Fatalf("无 choices 返回")
+	}
+
+	fmt.Printf("[Test] ✅ 复杂 18 个工具 Schema (包含大量 union 类型与嵌套对象) 成功通过上游校验！\n")
+}
+
