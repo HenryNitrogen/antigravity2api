@@ -1,6 +1,9 @@
 services:
   antigravity2api:
+    # 方式 1: 直接拉取 GitHub Actions 自动构建好的公开镜像 (推荐，无需服务器编译)
     image: ghcr.io/henrynitrogen/antigravity2api:latest
+    # 方式 2: 使用本地源码直接构建
+    # build: .
     container_name: antigravity2api
     restart: always
     ports:
@@ -8,26 +11,26 @@ services:
     environment:
       - PORT=8088
       - HOST=0.0.0.0
-      # 👇 从 Mac 桌面端点击「复制 Refresh Token」，粘贴在此处：
+      # 👇 从 Mac 桌面端点击「复制 Refresh Token」，直接粘贴在此处：
       - REFRESH_TOKEN=在这里粘贴你的_REFRESH_TOKEN
       - PROJECT_ID=aicode-consumers
-      - DEFAULT_MODEL=gemini-3.8-flash-tiered
-      # 可选：API 访问密码 (客户端请求需带 Bearer <KEY>)
-      # - API_KEY=jerryisafemboy
+      - DEFAULT_MODEL=gemini-3.8-flash
+      # 可选：如果希望保护接口，设置 API Key (客户端请求需带 Bearer <KEY>)
+      # - API_KEY=sk-your-private-key
       # 可选：如果服务器位于中国大陆，需配置出海代理连接 Google:
       # - PROXY_URL=http://host.docker.internal:7890
 
-  # 🤖 Watchtower: 自动更新守护进程
-  # 每隔 120 秒自动检查 GitHub Container Registry (ghcr.io)
-  # 一旦检测到有新的 Docker 镜像推上去，自动在后台拉取并无缝重启 antigravity2api
+  # 🤖 Watchtower: 自动监控并更新容器
+  # 每隔 60 秒检查一次是否有新镜像发布，有新镜像就自动 pull 并无缝重启，且自动清理旧镜像
   watchtower:
-    image: containrrr/watchtower
-    container_name: watchtower
+    image: containrrr/watchtower:latest
+    container_name: antigravity2api-watchtower
     restart: always
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      - WATCHTOWER_CLEANUP=true                # 更新后自动清理无用的旧镜像，不占服务器硬盘
-      - WATCHTOWER_POLL_INTERVAL=120           # 检查间隔时间（秒），这里设为 2 分钟检查一次
-      - WATCHTOWER_INCLUDE_RESTARTING=true
-    command: antigravity2api                   # 只监控更新 antigravity2api，不影响服务器上的其他容器
+      - WATCHTOWER_CLEANUP=true                # 更新后自动删除无用的旧镜像，防止占用磁盘
+      - WATCHTOWER_POLL_INTERVAL=60            # 检查间隔时间（单位：秒，这里设置 60 秒）
+      - WATCHTOWER_INCLUDE_STOPPED=false
+      - WATCHTOWER_REVIVE_STOPPED=false
+    command: antigravity2api                   # 重点：只监控 antigravity2api 这个容器，不干扰你服务器上的其他容器
