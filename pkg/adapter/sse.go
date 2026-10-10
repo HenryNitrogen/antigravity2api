@@ -3,6 +3,7 @@ package adapter
 import (
 	"bufio"
 	"compress/gzip"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"antigravity2api/pkg/config"
+	"antigravity2api/pkg/upstream"
 )
 
 type UpstreamEnvelope struct {
@@ -37,15 +39,22 @@ type CandidateContent struct {
 }
 
 type UpstreamResponsePart struct {
-	Text             string `json:"text"`
-	Thought          bool   `json:"thought"`
-	ThoughtSignature string `json:"thoughtSignature"`
+	Text             string                      `json:"text"`
+	Thought          bool                        `json:"thought"`
+	ThoughtSignature string                      `json:"thoughtSignature"`
+	FunctionCall     *upstream.GeminiFunctionCall `json:"functionCall,omitempty"`
 }
 
 type UsageMetadata struct {
 	PromptTokenCount     int `json:"promptTokenCount"`
 	CandidatesTokenCount int `json:"candidatesTokenCount"`
 	TotalTokenCount      int `json:"totalTokenCount"`
+}
+
+func generateToolCallID() string {
+	b := make([]byte, 12)
+	_, _ = rand.Read(b)
+	return fmt.Sprintf("call_%x", b)
 }
 
 // ForwardStream processes upstream SSE lines and writes OpenAI-compatible SSE chunks to client
@@ -82,11 +91,14 @@ func ForwardStream(w http.ResponseWriter, upstreamResp *http.Response, model str
 	hadThinking := false
 	totalPromptTokens := 0
 	totalCompletionTokens := 0
+	hasToolCalls := false
 
 	thinkingFormat := cfg.ThinkingFormat
 	if thinkingFormat == "" {
 		thinkingFormat = "reasoning_content"
 	}
+
+	toolCallIndex := 0
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -123,6 +135,49 @@ func ForwardStream(w http.ResponseWriter, upstreamResp *http.Response, model str
 			}
 
 			for _, part := range cand.Content.Parts {
+				// 1. Handle Function Call (Tool Call)
+				if part.FunctionCall != nil {
+					hasToolCalls = true
+					if inThinking {
+						inThinking = false
+						if thinkingFormat == "think_tag" || thinkingFormat == "both" {
+							sendChunk(w, chunkID, created, model, ChunkDelta{Content: "\n</think>\n\n"})
+							flusher.Flush()
+						}
+					}
+
+					tcID := part.FunctionCall.ID
+					if tcID == "" {
+						tcID = generateToolCallID()
+					}
+
+					argsBytes, _ := json.Marshal(part.FunctionCall.Args)
+					argsStr := string(argsBytes)
+					if argsStr == "" || argsStr == "null" {
+						argsStr = "{}"
+					}
+
+					idx := toolCallIndex
+					toolCallIndex++
+
+					tc := ToolCall{
+						Index: &idx,
+						ID:    tcID,
+						Type:  "function",
+						Function: FunctionCallData{
+							Name:      part.FunctionCall.Name,
+							Arguments: argsStr,
+						},
+					}
+
+					sendChunk(w, chunkID, created, model, ChunkDelta{
+						ToolCalls: []ToolCall{tc},
+					})
+					flusher.Flush()
+					continue
+				}
+
+				// 2. Handle Text & Thinking
 				txt := part.Text
 
 				if part.Thought {
@@ -173,6 +228,10 @@ func ForwardStream(w http.ResponseWriter, upstreamResp *http.Response, model str
 
 	// Final stop chunk
 	stopReason := "stop"
+	if hasToolCalls {
+		stopReason = "tool_calls"
+	}
+
 	finalChunk := ChatCompletionChunk{
 		ID:      chunkID,
 		Object:  "chat.completion.chunk",
@@ -216,6 +275,7 @@ func sendChunk(w io.Writer, id string, created int64, model string, delta ChunkD
 func HandleNonStream(upstreamResp *http.Response, model string, cfg *config.Config) (*ChatCompletionResponse, error) {
 	var fullText strings.Builder
 	var fullReasoning strings.Builder
+	var toolCalls []ToolCall
 	totalPromptTokens := 0
 	totalCompletionTokens := 0
 
@@ -230,6 +290,39 @@ func HandleNonStream(upstreamResp *http.Response, model string, cfg *config.Conf
 	bodyBytes, err := io.ReadAll(reader)
 	if err != nil {
 		return nil, err
+	}
+
+	processCandidate := func(cand Candidate) {
+		if cand.Content == nil {
+			return
+		}
+		for _, part := range cand.Content.Parts {
+			if part.FunctionCall != nil {
+				tcID := part.FunctionCall.ID
+				if tcID == "" {
+					tcID = generateToolCallID()
+				}
+				argsBytes, _ := json.Marshal(part.FunctionCall.Args)
+				argsStr := string(argsBytes)
+				if argsStr == "" || argsStr == "null" {
+					argsStr = "{}"
+				}
+				idx := len(toolCalls)
+				toolCalls = append(toolCalls, ToolCall{
+					Index: &idx,
+					ID:    tcID,
+					Type:  "function",
+					Function: FunctionCallData{
+						Name:      part.FunctionCall.Name,
+						Arguments: argsStr,
+					},
+				})
+			} else if part.Thought {
+				fullReasoning.WriteString(part.Text)
+			} else {
+				fullText.WriteString(part.Text)
+			}
+		}
 	}
 
 	// First attempt to parse the entire body as a single JSON object (standard non-stream response)
@@ -249,16 +342,7 @@ func HandleNonStream(upstreamResp *http.Response, model string, cfg *config.Conf
 		}
 
 		for _, cand := range candidates {
-			if cand.Content == nil {
-				continue
-			}
-			for _, part := range cand.Content.Parts {
-				if part.Thought {
-					fullReasoning.WriteString(part.Text)
-				} else {
-					fullText.WriteString(part.Text)
-				}
-			}
+			processCandidate(cand)
 		}
 	} else {
 		// Fallback: parse as SSE lines
@@ -294,16 +378,7 @@ func HandleNonStream(upstreamResp *http.Response, model string, cfg *config.Conf
 			}
 
 			for _, cand := range candidates {
-				if cand.Content == nil {
-					continue
-				}
-				for _, part := range cand.Content.Parts {
-					if part.Thought {
-						fullReasoning.WriteString(part.Text)
-					} else {
-						fullText.WriteString(part.Text)
-					}
-				}
+				processCandidate(cand)
 			}
 		}
 	}
@@ -315,7 +390,11 @@ func HandleNonStream(upstreamResp *http.Response, model string, cfg *config.Conf
 		content = fmt.Sprintf("<think>\n%s\n</think>\n\n%s", reasoning, content)
 	}
 
-	stopReason := "stop"
+	finishReason := "stop"
+	if len(toolCalls) > 0 {
+		finishReason = "tool_calls"
+	}
+
 	resp := &ChatCompletionResponse{
 		ID:      fmt.Sprintf("chatcmpl-%d", time.Now().UnixNano()),
 		Object:  "chat.completion",
@@ -328,8 +407,9 @@ func HandleNonStream(upstreamResp *http.Response, model string, cfg *config.Conf
 					Role:             "assistant",
 					Content:          content,
 					ReasoningContent: reasoning,
+					ToolCalls:        toolCalls,
 				},
-				FinishReason: &stopReason,
+				FinishReason: &finishReason,
 			},
 		},
 		Usage: &UsageInfo{

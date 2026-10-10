@@ -45,6 +45,27 @@ type InternalInner struct {
 	Contents          []GeminiContent    `json:"contents"`
 	SystemInstruction *GeminiInstruction `json:"systemInstruction,omitempty"`
 	GenerationConfig  *GenerationConfig  `json:"generationConfig,omitempty"`
+	Tools             []GeminiTool       `json:"tools,omitempty"`
+	ToolConfig        *GeminiToolConfig  `json:"toolConfig,omitempty"`
+}
+
+type GeminiTool struct {
+	FunctionDeclarations []FunctionDeclaration `json:"functionDeclarations,omitempty"`
+}
+
+type FunctionDeclaration struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description,omitempty"`
+	Parameters  map[string]any `json:"parameters,omitempty"`
+}
+
+type GeminiToolConfig struct {
+	FunctionCallingConfig *FunctionCallingConfig `json:"functionCallingConfig,omitempty"`
+}
+
+type FunctionCallingConfig struct {
+	Mode                 string   `json:"mode,omitempty"` // "AUTO", "ANY", "NONE", "VALIDATED"
+	AllowedFunctionNames []string `json:"allowedFunctionNames,omitempty"`
 }
 
 type GeminiContent struct {
@@ -57,9 +78,23 @@ type GeminiInstruction struct {
 }
 
 type GeminiPart struct {
-	Text             string `json:"text,omitempty"`
-	Thought          bool   `json:"thought,omitempty"`
-	ThoughtSignature string `json:"thoughtSignature,omitempty"`
+	Text             string                `json:"text,omitempty"`
+	Thought          bool                  `json:"thought,omitempty"`
+	ThoughtSignature string                `json:"thoughtSignature,omitempty"`
+	FunctionCall     *GeminiFunctionCall   `json:"functionCall,omitempty"`
+	FunctionResponse *GeminiFunctionReturn `json:"functionResponse,omitempty"`
+}
+
+type GeminiFunctionCall struct {
+	Name string         `json:"name"`
+	Args map[string]any `json:"args,omitempty"`
+	ID   string         `json:"id,omitempty"`
+}
+
+type GeminiFunctionReturn struct {
+	Name     string         `json:"name"`
+	Response map[string]any `json:"response"`
+	ID       string         `json:"id,omitempty"`
 }
 
 type GenerationConfig struct {

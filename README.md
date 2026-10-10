@@ -8,6 +8,7 @@
 ## ✨ 核心特性
 
 - 🚀 **标准 OpenAI API 格式**：支持 `/v1/chat/completions` 和 `/v1/models`，无缝接入 NextChat、Cherry Studio、Chatbox、LobeChat、Cursor 等所有主流客户端。
+- 🛠 **完整 Tool / Function Calling 支持**：支持 OpenAI 格式的 `tools` 和 `tool_choice`，支持流式与非流式下发 `tool_calls`，完美适配 Cline、Cursor、Agent 智能体等调用外部工具/终端/读写文件的场景。
 - ⚡️ **全流式打字输出 (SSE)**：高响应度 Server-Sent Events，打字机实时吐字流畅。
 - 🧠 **思维链支持 (Thinking Process)**：支持标准 `reasoning_content` 以及 `<think>` 思维标签输出。
 - 🍏 **原生 macOS 桌面 GUI**：专为 Apple Silicon (M系列芯片) 打造的 AppKit 原生窗口应用，Dock 栏正常显示，支持一键复制 Refresh Token、Docker Compose 配置以及在桌面窗口实时测试。
