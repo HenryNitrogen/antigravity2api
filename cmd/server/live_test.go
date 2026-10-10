@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -123,5 +124,65 @@ func TestLiveTokenAndUpstream(t *testing.T) {
 	}
 
 	tc := parsedTool.Choices[0].Message.ToolCalls[0]
-	fmt.Printf("[Test] ✅ Tool Calling 正常触发: 函数名=%s, 参数=%s\n", tc.Function.Name, tc.Function.Arguments)
+	fmt.Printf("[Test] ✅ Tool Calling 正常触发: 函数名=%s, 参数=%s, ID=%s\n", tc.Function.Name, tc.Function.Arguments, tc.ID)
+
+	// 3. 测试多轮交互：客户端带上 Tool Result 回传给模型
+	chatReqRound2 := &adapter.ChatCompletionRequest{
+		Model: "gemini-3.8-flash",
+		Messages: []adapter.ChatMessage{
+			{Role: "user", Content: "帮我查询纽约现在的天气"},
+			{
+				Role:      "assistant",
+				ToolCalls: []adapter.ToolCall{tc},
+			},
+			{
+				Role:       "tool",
+				ToolCallID: tc.ID,
+				Content:    `{"temperature": "20°C", "condition": "晴朗"}`,
+			},
+		},
+		Tools: []adapter.Tool{
+			{
+				Type: "function",
+				Function: adapter.FunctionPayload{
+					Name:        "get_weather",
+					Description: "获取指定城市天气",
+					Parameters: map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"city": map[string]any{"type": "string"},
+						},
+						"required": []string{"city"},
+					},
+				},
+			},
+		},
+	}
+
+	innerRound2, err := adapter.ConvertRequest(chatReqRound2)
+	if err != nil {
+		t.Fatalf("转换 Round2 请求失败: %v", err)
+	}
+
+	respRound2, err := client.CallGenerateContent(ctx, innerRound2, "gemini-3.8-flash", false)
+	if err != nil {
+		t.Fatalf("多轮 Tool 回传失败 (Upstream Error): %v", err)
+	}
+	defer respRound2.Body.Close()
+
+	if respRound2.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(respRound2.Body)
+		t.Fatalf("上游 Round2 响应错误 (%d): %s", respRound2.StatusCode, string(body))
+	}
+
+	parsedRound2, err := adapter.HandleNonStream(respRound2, "gemini-3.8-flash", cfg)
+	if err != nil {
+		t.Fatalf("解析 Round2 响应失败: %v", err)
+	}
+
+	if len(parsedRound2.Choices) == 0 {
+		t.Fatalf("Round2 无 choices 返回")
+	}
+
+	fmt.Printf("[Test] ✅ 多轮 Tool 交互完美成功！模型最终回复: %s\n", strings.TrimSpace(parsedRound2.Choices[0].Message.Content))
 }

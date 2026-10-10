@@ -157,6 +157,10 @@ func ForwardStream(w http.ResponseWriter, upstreamResp *http.Response, model str
 						argsStr = "{}"
 					}
 
+					if part.ThoughtSignature != "" {
+						SaveThoughtSignature(tcID, part.FunctionCall.Name, argsStr, part.ThoughtSignature)
+					}
+
 					idx := toolCallIndex
 					toolCallIndex++
 
@@ -307,6 +311,11 @@ func HandleNonStream(upstreamResp *http.Response, model string, cfg *config.Conf
 				if argsStr == "" || argsStr == "null" {
 					argsStr = "{}"
 				}
+
+				if part.ThoughtSignature != "" {
+					SaveThoughtSignature(tcID, part.FunctionCall.Name, argsStr, part.ThoughtSignature)
+				}
+
 				idx := len(toolCalls)
 				toolCalls = append(toolCalls, ToolCall{
 					Index: &idx,

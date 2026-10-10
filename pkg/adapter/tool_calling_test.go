@@ -224,3 +224,19 @@ data: [DONE]
 		t.Errorf("expected output to contain reasoning chunk, got: %s", output)
 	}
 }
+
+func TestThoughtSignaturePreservation(t *testing.T) {
+	fakeSig := "dummy_sig_12345"
+	SaveThoughtSignature("call_test_1", "my_func", `{"param":"val"}`, fakeSig)
+
+	retrieved := GetThoughtSignature("call_test_1", "my_func", `{"param":"val"}`)
+	if retrieved != fakeSig {
+		t.Errorf("expected signature %s, got %s", fakeSig, retrieved)
+	}
+
+	// Test fallback by name
+	retrievedByName := GetThoughtSignature("different_id", "my_func", `{"param":"val"}`)
+	if retrievedByName != fakeSig {
+		t.Errorf("expected signature by name %s, got %s", fakeSig, retrievedByName)
+	}
+}

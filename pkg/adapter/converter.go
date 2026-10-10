@@ -164,7 +164,10 @@ func ConvertRequest(req *ChatCompletionRequest) (upstream.InternalInner, error) 
 					toolIDToName[tc.ID] = tc.Function.Name
 				}
 
+				sig := GetThoughtSignature(tc.ID, tc.Function.Name, tc.Function.Arguments)
+
 				parts = append(parts, upstream.GeminiPart{
+					ThoughtSignature: sig,
 					FunctionCall: &upstream.GeminiFunctionCall{
 						Name: tc.Function.Name,
 						Args: argsMap,
