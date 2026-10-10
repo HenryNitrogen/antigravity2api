@@ -34,7 +34,28 @@ func ExtractTextContent(content any) string {
 	}
 }
 
-// cleanJSONSchema cleans an incoming JSON Schema (OpenAI/JSON-Schema draft) to conform to Gemini protobuf Schema
+// geminiSchemaAllowedKeys is the allowlist of JSON Schema keys supported by Gemini's protobuf Schema.
+// Any key not in this set is silently dropped, preventing upstream 400s from unknown fields.
+var geminiSchemaAllowedKeys = map[string]bool{
+	"type":        true,
+	"description": true,
+	"enum":        true,
+	"properties":  true,
+	"required":    true,
+	"items":       true,
+	"nullable":    true,
+	"anyOf":       true,
+	"minimum":     true,
+	"maximum":     true,
+	"minItems":    true,
+	"maxItems":    true,
+	"minLength":   true,
+	"maxLength":   true,
+	"pattern":     true,
+}
+
+// cleanJSONSchema cleans an incoming JSON Schema (OpenAI/JSON-Schema draft) to conform to Gemini protobuf Schema.
+// Uses an allowlist so that any future unknown field is automatically dropped without needing manual updates.
 func cleanJSONSchema(schema any) any {
 	if schema == nil {
 		return nil
@@ -50,29 +71,14 @@ func cleanJSONSchema(schema any) any {
 	case map[string]any:
 		cleaned := make(map[string]any)
 
-		// Keys not supported by Gemini v1internal Schema
-		ignoredKeys := map[string]bool{
-			"$schema":              true,
-			"additionalProperties": true,
-			"format":               true,
-			"default":              true,
-			"uniqueItems":          true,
-			"propertyNames":        true,
-			"title":                true,
-		}
-
 		for key, val := range v {
-			if ignoredKeys[key] {
-				continue
-			}
-
-			// Handle type field
+			// Handle type field (normalize to uppercase, resolve union types)
 			if key == "type" {
 				switch tv := val.(type) {
 				case string:
 					cleaned["type"] = strings.ToUpper(tv)
 				case []any:
-					// e.g. ["string", "null"] -> pick non-null string
+					// e.g. ["string", "null"] -> pick non-null type
 					var chosen string
 					for _, item := range tv {
 						if s, ok := item.(string); ok && s != "null" {
@@ -98,6 +104,10 @@ func cleanJSONSchema(schema any) any {
 			// Handle const -> enum
 			if key == "const" {
 				cleaned["enum"] = []any{val}
+				continue
+			}
+
+			if !geminiSchemaAllowedKeys[key] {
 				continue
 			}
 
