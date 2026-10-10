@@ -33,12 +33,12 @@ func (c *UpstreamClient) UpdateHTTPClient() {
 
 // GenerateContentRequest represents the payload for v1internal:generateContent
 type GenerateContentRequest struct {
-	Project     string         `json:"project"`
-	RequestID   string         `json:"requestId"`
-	Request     InternalInner  `json:"request"`
-	Model       string         `json:"model"`
-	UserAgent   string         `json:"userAgent"`
-	RequestType string         `json:"requestType"`
+	Project     string        `json:"project"`
+	RequestID   string        `json:"requestId"`
+	Request     InternalInner `json:"request"`
+	Model       string        `json:"model"`
+	UserAgent   string        `json:"userAgent"`
+	RequestType string        `json:"requestType"`
 }
 
 type InternalInner struct {
@@ -87,7 +87,7 @@ type GeminiPart struct {
 
 type GeminiFunctionCall struct {
 	Name string         `json:"name"`
-	Args map[string]any `json:"args,omitempty"`
+	Args map[string]any `json:"args"`
 	ID   string         `json:"id,omitempty"`
 }
 
