@@ -14,7 +14,6 @@ import (
 	"antigravity2api/pkg/auth"
 	"antigravity2api/pkg/config"
 	"antigravity2api/pkg/upstream"
-	"antigravity2api/pkg/web"
 )
 
 type LogEntry struct {
@@ -70,15 +69,19 @@ func (s *Server) SetupHandler() http.Handler {
 	mux.HandleFunc("/v1/chat/completions", s.handleChatCompletions)
 	mux.HandleFunc("/v1/models", s.handleModels)
 
-	// Auth and Web APIs
-	mux.HandleFunc("/api/status", s.handleStatus)
-	mux.HandleFunc("/api/config", s.handleUpdateConfig)
-	mux.HandleFunc("/api/logs", s.handleGetLogs)
-	mux.HandleFunc("/auth/login-url", s.handleLoginURL)
-	mux.HandleFunc("/oauth-callback", s.handleOAuthCallback)
-
-	// Web UI
-	mux.HandleFunc("/", s.handleWebUI)
+	// Minimal Health Check
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	})
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"service":"antigravity2api","status":"running","docs":"https://github.com/HenryNitrogen/antigravity2api"}`))
+	})
 
 	return s.corsMiddleware(mux)
 }
@@ -342,22 +345,6 @@ func (s *Server) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
 	`))
 }
 
-func (s *Server) handleWebUI(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" && !strings.HasPrefix(r.URL.Path, "/static/") {
-		http.NotFound(w, r)
-		return
-	}
-
-	content, err := web.StaticFS.ReadFile("static/index.html")
-	if err != nil {
-		http.Error(w, "Dashboard file not found", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write(content)
-}
-
 func (s *Server) Start() error {
 	addr := fmt.Sprintf("%s:%d", s.cfg.Host, s.cfg.Port)
 	s.httpServer = &http.Server{
@@ -366,8 +353,8 @@ func (s *Server) Start() error {
 	}
 
 	fmt.Printf("\n🚀 Antigravity2Api 服务已启动: http://%s\n", addr)
-	fmt.Printf("👉 OpenAI 格式端点: http://%s/v1/chat/completions\n", addr)
-	fmt.Printf("👉 Web 管理控制台:   http://%s/\n\n", addr)
+	fmt.Printf("👉 OpenAI Chat 端点:   http://%s/v1/chat/completions\n", addr)
+	fmt.Printf("👉 OpenAI Models 端点: http://%s/v1/models\n\n", addr)
 
 	return s.httpServer.ListenAndServe()
 }

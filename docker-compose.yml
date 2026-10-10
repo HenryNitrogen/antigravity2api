@@ -1,6 +1,9 @@
 services:
   antigravity2api:
-    build: .
+    # 方式 1: 直接拉取 GitHub Actions 自动构建好的公开镜像 (推荐，无需服务器编译)
+    image: ghcr.io/henrynitrogen/antigravity2api:latest
+    # 方式 2: 使用本地源码直接构建
+    # build: .
     container_name: antigravity2api
     restart: always
     ports:
