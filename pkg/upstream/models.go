@@ -77,11 +77,11 @@ func MapModel(input string) string {
 		return "gemini-3.6-flash-high"
 
 	// 3.1 Pro 系列
-	case "gemini-3.1-pro", "gemini-3.1", "gemini-3.1-pro-low", "3.1", "3.1-pro":
+	case "gemini-3.1-pro", "gemini-3.1", "gemini-3.1-pro-low", "3.1", "3.1-pro", "gemini-3.1-pro-preview":
 		return "gemini-3.1-pro-low"
 
 	// Claude 系列
-	case "claude-sonnet-4-6", "claude-3-7-sonnet", "claude-3-5-sonnet":
+	case "claude-sonnet-4-6", "claude-3-7-sonnet", "claude-3-5-sonnet", "claude-opus-5-5", "claude-opus-4-6":
 		return "claude-sonnet-4-6"
 
 	// 兼容别名映射

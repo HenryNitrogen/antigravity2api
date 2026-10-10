@@ -61,7 +61,7 @@ func goOnCopyDockerCompose() {
 
 	snippet := fmt.Sprintf(`services:
   antigravity2api:
-    image: ghcr.io/henrynitrogen/antigravity2api:latest
+    image: ghcr.io/henrynitrogen/antigravity2api:latest # 或本地 build: .
     container_name: antigravity2api
     restart: always
     ports:
@@ -71,20 +71,8 @@ func goOnCopyDockerCompose() {
       - HOST=0.0.0.0
       - REFRESH_TOKEN=%s
       - PROJECT_ID=aicode-consumers
-      - DEFAULT_MODEL=gemini-3.8-flash-tiered
-      # - API_KEY=jerryisafemboy
-
-  # 🤖 Watchtower 自动拉取更新服务
-  watchtower:
-    image: containrrr/watchtower
-    container_name: watchtower
-    restart: always
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      - WATCHTOWER_CLEANUP=true
-      - WATCHTOWER_POLL_INTERVAL=120
-    command: antigravity2api
+      - DEFAULT_MODEL=gemini-3.8-flash
+      # - PROXY_URL=http://host.docker.internal:7890 # 如果服务器在中国大陆，取消注释配置出海代理
 `, rt)
 
 	C.copyTextToPasteboard(C.CString(snippet))

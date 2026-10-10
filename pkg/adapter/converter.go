@@ -34,6 +34,84 @@ func ExtractTextContent(content any) string {
 	}
 }
 
+// cleanJSONSchema cleans an incoming JSON Schema (OpenAI/JSON-Schema draft) to conform to Gemini protobuf Schema
+func cleanJSONSchema(schema any) any {
+	if schema == nil {
+		return nil
+	}
+	switch v := schema.(type) {
+	case []any:
+		res := make([]any, len(v))
+		for i, item := range v {
+			res[i] = cleanJSONSchema(item)
+		}
+		return res
+
+	case map[string]any:
+		cleaned := make(map[string]any)
+
+		// Keys not supported by Gemini v1internal Schema
+		ignoredKeys := map[string]bool{
+			"$schema":              true,
+			"additionalProperties": true,
+			"format":               true,
+			"default":              true,
+			"uniqueItems":          true,
+			"propertyNames":        true,
+			"title":                true,
+		}
+
+		for key, val := range v {
+			if ignoredKeys[key] {
+				continue
+			}
+
+			// Handle type field
+			if key == "type" {
+				switch tv := val.(type) {
+				case string:
+					cleaned["type"] = strings.ToUpper(tv)
+				case []any:
+					// e.g. ["string", "null"] -> pick non-null string
+					var chosen string
+					for _, item := range tv {
+						if s, ok := item.(string); ok && s != "null" {
+							chosen = s
+							break
+						}
+					}
+					if chosen == "" && len(tv) > 0 {
+						if s, ok := tv[0].(string); ok {
+							chosen = s
+						}
+					}
+					if chosen == "" {
+						chosen = "STRING"
+					}
+					cleaned["type"] = strings.ToUpper(chosen)
+				default:
+					cleaned["type"] = "STRING"
+				}
+				continue
+			}
+
+			// Handle const -> enum
+			if key == "const" {
+				cleaned["enum"] = []any{val}
+				continue
+			}
+
+			// Recursively clean sub-schemas (properties, items, etc.)
+			cleaned[key] = cleanJSONSchema(val)
+		}
+
+		return cleaned
+
+	default:
+		return v
+	}
+}
+
 // ConvertRequest transforms an OpenAI ChatCompletionRequest to Gemini InternalInner
 func ConvertRequest(req *ChatCompletionRequest) (upstream.InternalInner, error) {
 	var systemTexts []string
@@ -161,10 +239,20 @@ func ConvertRequest(req *ChatCompletionRequest) (upstream.InternalInner, error) 
 			if tool.Function.Name == "" {
 				continue
 			}
+
+			var cleanedParams map[string]any
+			if tool.Function.Parameters != nil {
+				if cleaned, ok := cleanJSONSchema(tool.Function.Parameters).(map[string]any); ok {
+					cleanedParams = cleaned
+				} else {
+					cleanedParams = tool.Function.Parameters
+				}
+			}
+
 			funcDecls = append(funcDecls, upstream.FunctionDeclaration{
 				Name:        tool.Function.Name,
 				Description: tool.Function.Description,
-				Parameters:  tool.Function.Parameters,
+				Parameters:  cleanedParams,
 			})
 		}
 
